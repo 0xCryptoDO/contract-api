@@ -28,6 +28,17 @@
 
 ## Installation
 
+First, add .env 
+Example:
+NODE_ENV=development
+DB_USERNAME=username
+DB_PASSWORD=password
+DB_HOST=mongodb.project.app
+DB_PORT=3300
+JWT_SECRET=secret
+
+BSCSCAN_API_KEY=api123key
+
 ```bash
 $ npm install
 ```
