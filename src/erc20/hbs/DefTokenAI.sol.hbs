@@ -1,0 +1,56 @@
+// created by cryptodo.app
+
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+{{#if burn}}import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";{{/if}}
+{{#if mint}}import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol";{{/if}}
+{{#if taxBurn}}import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Taxable.sol";{{/if}}
+{{#if team}}import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Team.sol";{{/if}}
+{{#if liquidity}}import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Liquidity.sol";{{/if}}
+{{#if blacklist}}import "@openzeppelin/contracts/security/ERC20Blacklist.sol";{{/if}}
+{{#if pause}}import "@openzeppelin/contracts/security/Pausable.sol";{{/if}}
+
+contract {{contractName}} is ERC20
+    {{#if burn}}, ERC20Burnable{{/if}}
+    {{#if mint}}, ERC20Capped{{/if}}
+    {{#if taxBurn}}, ERC20Taxable{{/if}}
+    {{#if team}}, ERC20Team{{/if}}
+    {{#if liquidity}}, ERC20Liquidity{{/if}}
+    {{#if blacklist}}, ERC20Blacklist{{/if}}
+    {{#if pause}}, Pausable{{/if}}
+{
+    constructor(
+        address initialOwner_,
+        string memory name_,
+        string memory symbol_,
+        uint8 decimals_,
+        uint256 totalSupply_
+        {{#if mint}}, uint256 cap_{{/if}}
+        {{#if liquidity}}, address router_{{/if}}
+        {{#if team}}, uint256 teamFee_{{/if}}
+        {{#if team}}, address teamWallet_{{/if}}
+        {{#if liquidity}}, uint256 liquidityFee_{{/if}}
+    ) 
+        ERC20(name_, symbol_) 
+        {{#if mint}}ERC20Capped(cap_){{/if}}
+        {
+        _mint(initialOwner_, totalSupply_);
+        decimals_ = decimals_;
+        {{#if team}}_teamFee = teamFee_;{{/if}}
+        {{#if team}}_teamWallet = teamWallet_;{{/if}}
+        {{#if liquidity}}_liquidityFee = liquidityFee_;{{/if}}
+    }
+
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 amount
+    ) internal virtual override(ERC20 {{#if burn}},ERC20Burnable{{/if}} {{#if taxBurn}},ERC20Taxable{{/if}} {{#if team}},ERC20Team{{/if}} {{#if liquidity}},ERC20Liquidity{{/if}} {{#if pause}},Pausable{{/if}}) {
+        super._beforeTokenTransfer(from, to, amount);
+        {{#if blacklist}}require(!isBlacklisted(from) && !isBlacklisted(to), "ERC20Blacklist: account is blacklisted");{{/if}}
+        {{#if pause}}require(!paused(), "Pausable: token transfer while paused");{{/if}}
+    }
+}

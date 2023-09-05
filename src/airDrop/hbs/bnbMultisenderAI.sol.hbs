@@ -1,0 +1,47 @@
+// created by cryptodo.app
+
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
+contract {{contractName}} is Ownable {
+    using SafeMath for uint256;
+
+    uint256 public totalDistributedBNB;
+
+    event MultisendBNBEvent(
+        address indexed sender,
+        address indexed recipient,
+        uint256 value
+    );
+
+    receive() external payable {}
+
+    function multisendBNB(
+        address[] memory recipients,
+        uint256[] memory values
+    ) external payable onlyOwner {
+        require(
+            recipients.length == values.length,
+            "Array lengths do not match"
+        );
+        uint256 sumValue;
+        for (uint256 i = 0; i < recipients.length; i++) {
+            sumValue = sumValue.add(values[i]);
+            totalDistributedBNB = totalDistributedBNB.add(values[i]);
+        }
+        require(msg.value >= sumValue, "Insufficient msg value");
+        for (uint256 i = 0; i < recipients.length; i++) {
+            payable(recipients[i]).transfer(values[i]);
+            emit MultisendBNBEvent(msg.sender, recipients[i], values[i]);
+        }
+    }
+
+    function withdraw() external onlyOwner {
+        (bool success, ) = owner().call{value: address(this).balance}("");
+        require(success, "Withdraw failed");
+    }
+}

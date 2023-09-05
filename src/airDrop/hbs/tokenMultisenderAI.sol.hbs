@@ -1,0 +1,38 @@
+// created by cryptodo.app
+
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract {{contractName}} is Ownable {
+    using SafeMath for uint256;
+
+    uint256 public totalDistributedTokens;
+
+    event MultisendTokenEvent(
+        address indexed sender,
+        address indexed recipient,
+        uint256 value
+    );
+
+    function multisendToken(
+        IERC20 token,
+        address[] memory recipients,
+        uint256[] memory values
+    ) external onlyOwner {
+        for (uint256 i = 0; i < recipients.length; i++) {
+            token.transferFrom(msg.sender, recipients[i], values[i]);
+            totalDistributedTokens = totalDistributedTokens.add(values[i]);
+            emit MultisendTokenEvent(msg.sender, recipients[i], values[i]);
+        }
+    }
+
+    function withdraw(IERC20 token) external onlyOwner {
+        uint256 contractTokenBalance = token.balanceOf(address(this));
+        token.transfer(msg.sender, contractTokenBalance);
+    }
+}

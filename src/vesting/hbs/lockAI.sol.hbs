@@ -1,0 +1,45 @@
+// created by cryptodo.app
+
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+contract {{contractName}} {
+    struct LockInfo {
+        uint256 amount;
+        uint256 end;
+    }
+
+    mapping(address => LockInfo) public locks;
+    IERC20 public token;
+
+    constructor(
+        IERC20 _token,
+        address[] memory _addresses,
+        uint256[] memory _amounts,
+        uint256 _lockDuration
+    ) {
+        require(
+            _addresses.length == _amounts.length,
+            'Addresses and amounts length mismatch'
+        );
+        token = _token;
+
+        for (uint256 i = 0; i < _addresses.length; i++) {
+            locks[_addresses[i]] = LockInfo({
+                amount: _amounts[i],
+                end: block.timestamp + _lockDuration
+            });
+        }
+    }
+
+    function withdraw() public {
+        LockInfo storage lockInfo = locks[msg.sender];
+
+        require(block.timestamp >= lockInfo.end, 'Lock period not ended');
+        uint256 amount = lockInfo.amount;
+        lockInfo.amount = 0;
+
+        token.transfer(msg.sender, amount);
+    }
+}

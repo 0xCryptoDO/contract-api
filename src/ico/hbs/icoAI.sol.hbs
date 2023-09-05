@@ -1,0 +1,72 @@
+
+
+// created by cryptodo.app
+
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract {{contractName}} is Ownable {
+    using SafeERC20 for IERC20;
+
+    IERC20 public token;
+
+    address public receiverAddress = {{receiverAddress}};
+    uint256 public price;
+    uint256 public lockup;
+    uint256 public maxPerWallet;
+    
+    mapping(address => uint256) public balances;
+    mapping(address => uint256) public purchaseTimestamps;
+
+    event TokensPurchased(address indexed purchaser, uint256 amount);
+    event TokensWithdrawn(address indexed purchaser, uint256 amount);
+    event ReceiverAddressChanged(address newAddress);
+
+    constructor(IERC20 _token, uint256 _price, uint256 _lockup, uint256 _maxPerWallet) {
+        token = _token;
+        price = _price;
+        lockup = _lockup;
+        maxPerWallet = _maxPerWallet;
+        transferOwnership({{ownerAddress}});
+    }
+
+    function getDecimals() private view returns (uint8) {
+        (bool success, bytes memory data) = address(token).staticcall(abi.encodeWithSignature("decimals()"));
+        require(success, "Failed to call decimals function on token contract");
+        return abi.decode(data, (uint8));
+    }
+
+    function setReceiverAddress(address newAddress) external onlyOwner {
+        receiverAddress = newAddress;
+        emit ReceiverAddressChanged(newAddress);
+    }
+
+    function buyTokens() external payable {
+        require(msg.value > 0, "Ether value must be greater than zero");
+        uint256 tokenAmount = (msg.value * (10 ** getDecimals())) / price;
+        require(tokenAmount <= maxPerWallet, "Cannot purchase more than maxPerWallet tokens");
+        require(balances[msg.sender] + tokenAmount <= maxPerWallet, "Cannot hold more than maxPerWallet tokens");
+        require(tokenAmount <= token.balanceOf(address(this)), "Not enough tokens in the contract");
+        balances[msg.sender] += tokenAmount;
+        purchaseTimestamps[msg.sender] = block.timestamp;
+        emit TokensPurchased(msg.sender, tokenAmount);
+    }
+    
+    function withdrawTokens() external {
+        require(block.timestamp > purchaseTimestamps[msg.sender] + lockup, "Lockup period is not over yet");
+        uint256 amount = balances[msg.sender];
+        require(amount > 0, "Nothing to withdraw");
+        balances[msg.sender] = 0;
+        token.safeTransfer(msg.sender, amount);
+        emit TokensWithdrawn(msg.sender, amount);
+    }
+    
+    function claimEther() external {
+        require(msg.sender == receiverAddress, "Caller is not receiverAddress");
+        payable(receiverAddress).transfer(address(this).balance);
+    }
+}

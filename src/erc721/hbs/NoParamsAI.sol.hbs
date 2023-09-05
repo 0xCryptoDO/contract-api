@@ -1,0 +1,214 @@
+// created by cryptodo.app
+
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol"
+
+contract {{contractName}} is ERC721Enumerable, Ownable, ReentrancyGuard {
+
+	uint256 public TOKEN_MAX_AMOUNT = {{totalSupply}};
+	uint256 public TOKEN_PER_TX = {{tokenPerTx}};
+	uint256 public TOKEN_PER_WALLET = {{tokenPerWallet}};
+	uint256 public PRICE = {{price}};
+	uint256 public constant TIME_FOR_GROWN = {{timeForReveal}};
+	address public founder = {{founder}};
+
+	uint256 public mintedPresaleCount;
+
+	mapping (uint256 => uint256) private _entityBirthdays;
+	mapping (address => uint256) private _availableClaims;
+	mapping (uint256 => string) private _ipfsHash;
+	string private _simpleIpfsHash;
+
+	bool private _isPublicSaleActive = false;
+	bool private _isPreSaleActive = false;
+	bool private _isSimpleIpfsHash = false;
+
+	string public tokenURIPrefix = "ipfs://";
+	string public tokenURISuffix = "/metadata.json";
+
+	string private _name = {{{name}}};
+	string private _symbol = {{{symbol}}};
+	string private _baseTokenURI = {{{uri}}};
+
+	event SendETH(address indexed to, uint256 amount);
+	event SetNewPercent(address indexed to, uint256 percent);
+	event SetNewValue(string nameValue, uint256 oldValue, uint256 newValue);
+
+	constructor () ERC721(_name, _symbol) {	}
+
+	{{{incrementTokenMaxAmount}}}
+
+	function mintPublic(uint256 amount) external payable nonReentrant() {
+		require(_isPublicSaleActive, "Public sale is not active");
+		require(amount <= TOKEN_PER_TX, "You can't mint that many tokens");
+		require(totalSupply() + amount <= TOKEN_MAX_AMOUNT, "Mint would exceed max supply of tokens");
+		require(msg.value == amount * PRICE, "You didn't send the right amount of eth");
+
+		_mintMultiple(msg.sender, amount);
+	}
+
+	function _mintMultiple(address owner, uint256 amount) private {
+		require(balanceOf(owner) + amount <= TOKEN_PER_WALLET, "Mint would exceed max tokens per wallet");
+		for (uint256 i = 0; i < amount; i++) {
+			uint256 tokenId = totalSupply();
+			_entityBirthdays[tokenId] = block.timestamp;
+			_safeMint(owner, tokenId);
+		}
+	}
+
+	function enableClaimFoundingMembers(address[] memory members, uint256[] memory amounts) external onlyOwner {
+		require(amounts.length == members.length, "miscellaneous number of elements");
+		for (uint256 i = 0; i < members.length; i++) {
+			require(members[i] != address(0), "member is the zero address");
+			require(amounts[i] <= TOKEN_PER_TX, "amount is more than the allowable");
+			_availableClaims[members[i]] = amounts[i];
+		}
+	}
+
+	function setIpfsHash(string[] memory ipfsHashs, uint256[] memory idTokens) external onlyOwner {
+		require(ipfsHashs.length == idTokens.length, "miscellaneous number of elements");
+		if(_isSimpleIpfsHash) {
+			_simpleIpfsHash = ipfsHashs[0];
+			return;
+		}
+		for (uint256 i = 0; i < idTokens.length; i++) {
+			bytes memory tempHash = bytes(_ipfsHash[idTokens[i]]);
+			require(tempHash.length == 0, "IPFS hash can be set only once");
+			require(idTokens[i] <= TOKEN_MAX_AMOUNT, "id is more than the allowable");
+			_ipfsHash[idTokens[i]] = ipfsHashs[i];
+		}
+	}
+
+	function isAvailableForClaim() public view returns (bool) {
+		return _availableClaims[msg.sender] > 0;
+	}
+
+	function mintPresaleMember() external payable nonReentrant() {
+		uint256 amount = _availableClaims[msg.sender];
+		makePresaleMemberMint(amount, msg.value);
+	}
+
+	function mintPresaleMemberWithAmount(uint256 amount) external payable nonReentrant() {
+		makePresaleMemberMint(amount, msg.value);
+	}
+
+	function makePresaleMemberMint(uint256 tokenAmount, uint256 etherAmount) private {
+		uint256 availableAmount = _availableClaims[msg.sender];
+		require(availableAmount >= tokenAmount, "Wrong amount");
+
+		require(_isPreSaleActive, "Pre-sale is not active");
+		require(isAvailableForClaim(), "You've not claimed your token");
+		require(totalSupply() + tokenAmount <= TOKEN_MAX_AMOUNT, "Mint would exceed max supply of tokens");
+		require(mintedPresaleCount + tokenAmount <= TOKEN_MAX_AMOUNT, "Mint would exceed max pre-sale tokens");
+		require(etherAmount == tokenAmount*PRICE, "You didn't send the right amount of eth");
+
+		mintedPresaleCount += tokenAmount;
+		_availableClaims[msg.sender] -= tokenAmount;
+		_mintMultiple(msg.sender, tokenAmount);
+	}
+
+	function setBaseTokenURI(string memory baseTokenURI) public onlyOwner {
+		_baseTokenURI = baseTokenURI;
+	}
+
+	function setEntityBirthdaysPrice(uint256 newPrice) public onlyOwner {
+		require(newPrice > 0, "Wrong price");
+		emit SetNewValue("PRICE", PRICE, newPrice);
+		PRICE = newPrice;
+	}
+
+	function setEntityBirthdaysPerTx(uint256 newPerTx) public onlyOwner {
+		require(newPerTx > 0, "Wrong per tx");
+		emit SetNewValue("TOKEN_PER_TX", TOKEN_PER_TX, newPerTx);
+		TOKEN_PER_TX = newPerTx;
+	}
+
+	function setTokenPerWallet(uint256 newPerWallet) public onlyOwner {
+		require(newPerWallet > 0, "Wrong amount per wallet");
+		emit SetNewValue("TOKEN_PER_WALLET", TOKEN_PER_WALLET, newPerWallet);
+		TOKEN_PER_WALLET = newPerWallet;
+	}
+
+	function claimETH() external {
+		require(owner() == _msgSender() || founder == _msgSender(), "You have no right to it");
+		sendETH(payable(founder), getContractBalance());
+	}
+
+	function sendETH(address payable to, uint256 amount) private nonReentrant() {
+		uint256 balance = getContractBalance();
+		amount = amount > balance ? balance : amount;
+		(bool sent, ) = to.call{value: amount}("");
+		require(sent, "Failed to send ETH");
+		emit SendETH(to, amount);
+	}
+
+	function getContractBalance() public view returns (uint256) {
+		return address(this).balance;
+	}
+
+	function tokensOfOwner(address user) external view returns (uint256[] memory ownerTokens) {
+		uint256 tokenCount = balanceOf(user);
+		if (tokenCount == 0) {
+			return new uint256[](0);
+		} else {
+			uint256[] memory output = new uint256[](tokenCount);
+			for (uint256 index = 0; index < tokenCount; index++) {
+				output[index] = tokenOfOwnerByIndex(user, index);
+			}
+			return output;
+		}
+	}
+
+	function getBirthday(uint256 tokenId) public view returns (uint256) {
+		require(tokenId < totalSupply(), "That entity has not been make yet");
+		return _entityBirthdays[tokenId];
+	}
+
+	function getIpfsTokenUri(uint256 tokenId) external view returns (string memory) {
+		require(tokenId < totalSupply(), "That entity has not been make yet");
+		require(getBirthday(tokenId) < block.timestamp + TIME_FOR_GROWN, "That entity has not grown yet");
+		return string(abi.encodePacked(tokenURIPrefix, _ipfsHash[tokenId], tokenURISuffix));
+	}
+
+	function getIpfsHash(uint256 tokenId) external onlyOwner view returns (string memory) {
+		require(tokenId < totalSupply(), "That entity has not been make yet");
+		if(_isSimpleIpfsHash) {
+			return _simpleIpfsHash;
+		} else {
+			return _ipfsHash[tokenId];
+		}
+	}
+
+	function togglePublicSale() external onlyOwner {
+		_isPublicSaleActive = !_isPublicSaleActive;
+	}
+
+	function togglePreSale() external onlyOwner {
+		_isPreSaleActive = !_isPreSaleActive;
+	}
+
+	function isPublicSaleActive() external view returns (bool status) {
+		return _isPublicSaleActive;
+	}
+
+	function isPreSaleActive() external view returns (bool status) {
+		return _isPreSaleActive;
+	}
+
+	function _baseURI() internal view virtual override returns (string memory) {
+		return _baseTokenURI;
+	}
+
+	function _setTokenURIPrefix(string memory _tokenURIPrefix) external onlyOwner {
+		tokenURIPrefix = _tokenURIPrefix;
+	}
+
+	function _setTokenURISuffix(string memory _tokenURISuffix) external onlyOwner {
+		tokenURISuffix = _tokenURISuffix;
+	}
+}
